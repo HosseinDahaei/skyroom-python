@@ -1,6 +1,6 @@
 import json
-
 import requests
+from collections import defaultdict
 
 
 
@@ -331,3 +331,78 @@ class SkyroomAPI(object):
             user['abs_duration_secs'] =str(max(0,session_duration - int(item['duration'])))
             output.append(user)
         return output
+    
+
+    def getAttendanceOfRoom(self, room_id):
+        sessions = self.getSessions(room_id)
+        # Will hold the original per-session data
+        sessions_output = []
+
+        # For merged view keyed by nickname
+        merged_by_nickname = defaultdict(lambda: {
+        'nickname': None,
+        'total_att_duration_secs': 0,
+        'total_abs_duration_secs': 0,
+        'first_start_time': None,
+        'last_stop_time': None,
+        'sessions': []  # per-session records for this nickname
+        })
+
+        for session in sessions:
+            session_id = session['id']
+            attendances = self.getAttendances(int(session_id))
+
+            # store per-session raw data
+            sessions_output.append({
+                'session_id': session_id,
+                'attendances': attendances
+            })
+
+            # merge by nickname
+            for att in attendances:
+                nickname = att.get('nickname') or 'UNKNOWN'
+                record = merged_by_nickname[nickname]
+
+                record['nickname'] = nickname
+                # Make sure we treat these as ints
+                att_duration = int(att.get('att_duration_secs', 0))
+                abs_duration = int(att.get('abs_duration_secs', 0))
+
+                record['total_att_duration_secs'] += att_duration
+                record['total_abs_duration_secs'] += abs_duration
+                
+                # times
+                start_time = att.get('start_time')
+                stop_time = att.get('stop_time')
+
+                # Update first_start_time
+                if start_time is not None:
+                    if record['first_start_time'] is None or start_time < record['first_start_time']:
+                        record['first_start_time'] = start_time
+
+                # Update last_stop_time
+                if stop_time is not None:
+                    if record['last_stop_time'] is None or stop_time > record['last_stop_time']:
+                        record['last_stop_time'] = stop_time
+
+                # Optionally keep useful fields from each session
+                record['sessions'].append({
+                    'session_id': session_id,
+                    'user_id': att['id'],
+                    'client_id': att['client_id'],
+                    'start_time': att['start_time'],
+                    'stop_time': att['stop_time'],
+                    'status': att['status'],
+                    'api_user_id': att['api_user_id'],
+                    'att_duration_secs': att_duration,
+                    'abs_duration_secs': abs_duration
+                })
+
+        # Convert defaultdict to a list for clean output
+        merged_list = list(merged_by_nickname.values())
+
+        return {
+            'room_id': room_id,
+            'sessions': sessions_output,
+            'merged_by_nickname': merged_list
+        }
