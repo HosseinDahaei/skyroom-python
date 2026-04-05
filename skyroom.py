@@ -37,6 +37,7 @@ class SkyroomAPI(object):
         if params:
             data['params'] = params
         try:
+            content_data = None
             content_data = requests.post(url, headers=self.headers, auth=None, json=data, **self.request_kwargs).content
             try:
                 response = json.loads(content_data.decode("utf-8"))
@@ -49,8 +50,9 @@ class SkyroomAPI(object):
             except ValueError as e:
                 raise HTTPException(e)
             return response
-        except requests.exceptions.RequestException as e:
-            raise HTTPException(e)
+        except Exception as e:
+            print("Raw content_data: ",content_data)
+            raise Exception(e)
 
     # 1.Service Management
 
@@ -288,3 +290,44 @@ class SkyroomAPI(object):
     def getLoginUrl(self, *args, **kwargs):
         """Alias of createLoginUrl for backward compatibility."""
         return self.createLoginUrl(*args, **kwargs)
+
+
+    # Session management
+    def getSessions(self,room_id):
+        params = {"room_id":room_id}
+        return self._request('getSessions', params)
+    
+    def getSessionsCount(self,room_id):
+        params = {"room_id":room_id}
+        return self._request('getSessionsCount', params)
+    
+    def getSession(self,session_id):
+        params = {"session_id":session_id}
+        return self._request('getSession', params)
+    
+    def getConnections(self,session_id):
+        params = {'session_id': session_id}
+        return self._request('getConnections', params)
+
+    def getConnectionsCount(self,session_id):
+        params = {'session_id': session_id}
+        return self._request('getConnectionsCount', params)
+    
+    def getAttendances(self,session_id):
+        cons = self.getConnections(session_id)
+        session_info = self.getSession(session_id)
+        session_duration = int(session_info['duration'])
+        output = []
+        for item in cons:
+            user = {}
+            user['id'] = item['id']
+            user['nickname'] = item['nickname']
+            user['client_id'] = item['client_id']
+            user['start_time'] = item['start_time']
+            user['stop_time']  = item['stop_time']
+            user['status'] = item['status']
+            user['api_user_id'] = item['api_user_id']
+            user['att_duration_secs'] = item['duration']
+            user['abs_duration_secs'] =str(max(0,session_duration - int(item['duration'])))
+            output.append(user)
+        return output
